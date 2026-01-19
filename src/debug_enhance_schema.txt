@@ -1,0 +1,271 @@
+schema_text:
+CREATE TABLE badges (
+    Id INTEGER PRIMARY KEY,  -- Format: Numeric unique identifier for the badge.
+    UserId INTEGER,  -- Format: Numeric unique identifier corresponding to a user in the users table.
+    Name TEXT,  -- Format: Descriptive text in camel case or lowercase; represents the badge type or achievement.
+    `Date` DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the first 4 digits are the year, the next 2 digits are the month (01-12), the next 2 digits are the day (01-31), followed by the timestamp in 24-hour format.
+    CONSTRAINT fk_badges_userid FOREIGN KEY (UserId) REFERENCES users (Id)
+);
+
+CREATE TABLE comments (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique numeric identifier where each value is an increasing integer assigned to a comment.
+    PostId INTEGER,  -- Format: Numeric identifier corresponding to a post, referencing the posts table (foreign key constraint).
+    Score INTEGER,  -- Format: Integer value reflecting upvotes minus downvotes, typically ranging from negative numbers to positive.
+    Text TEXT,  -- Format: Free text containing alphanumeric characters, punctuation, and spaces; may include mentions (e.g., '@username') and emojis.
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:mm:SS.s' representing year, month, day, hour, minute, second, and optional milliseconds.
+    UserId INTEGER,  -- Format: Numeric identifier corresponding to a user, referencing the users table (foreign key constraint).
+    UserDisplayName TEXT,  -- Format: Free text for a user's display name, typically alphanumeric, may include underscores and spaces though no consistent casing is required.
+    CONSTRAINT fk_comments_postid FOREIGN KEY (PostId) REFERENCES posts (Id),
+    CONSTRAINT fk_comments_userid FOREIGN KEY (UserId) REFERENCES users (Id)
+);
+
+CREATE TABLE postHistory (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique sequential integer starting from 1, used to identify each post history record.
+    PostHistoryTypeId INTEGER,  -- Format: Represents the type of history event as an integer identifier mapped to predefined event types (e.g., 1: initial post, 2: edit, etc.).
+    PostId INTEGER,  -- Format: Integer identifier referencing the corresponding post in the posts table.
+    RevisionGUID TEXT,  -- Format: UUID (Universally Unique Identifier) as a 36-character string in the format 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' where x is a hexadecimal digit.
+    CreationDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' where the first 4 digits are the year, middle 2 digits are the month, and the last 2 digits are the day, followed by the time.
+    UserId INTEGER,  -- Format: Integer identifier referencing the corresponding user in the users table.
+    Text TEXT,  -- Format: Textual content associated with the post history event, supporting full sentences, code snippets, or metadata tags.
+    `Comment` TEXT,  -- Format: Freeform text field containing comments or notes about the post history event, often in plain text or containing URLs.
+    UserDisplayName TEXT,  -- Format: Contains the display name of the user involved in the post history event. Can include alphanumeric characters, spaces, or special characters.
+    CONSTRAINT fk_posthistory_postid FOREIGN KEY (PostId) REFERENCES posts (Id),  -- Constraint: Ensures PostId matches an existing ID in the posts table.
+    CONSTRAINT fk_posthistory_userid FOREIGN KEY (UserId) REFERENCES users (Id)  -- Constraint: Ensures UserId matches an existing ID in the users table.
+);
+
+CREATE TABLE postLinks (
+    Id INTEGER,  -- Format: Numeric value assigned sequentially and uniquely identifies each record.
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD hh:mm:ss.S' with milliseconds, where YYYY is the year, MM is the month (01–12), DD is the day (01–31), hh is the hour (00–23), mm is the minute (00–59), ss is the second (00–59), and .S adds millisecond precision.
+    PostId INTEGER,  -- Format: Numeric identifier associated with a post, corresponding to an Id in the 'posts' table.
+    RelatedPostId INTEGER,  -- Format: Numeric identifier associated with a related post, corresponding to an Id in the 'posts' table.
+    LinkTypeId INTEGER,  -- Format: Numeric value representing the type of relationship between posts (e.g., 1 = 'related', 3 = 'duplicate').
+    PRIMARY KEY (Id),
+    CONSTRAINT fk_postlinks_postid FOREIGN KEY (PostId) REFERENCES posts (Id),
+    CONSTRAINT fk_postlinks_relatedpostid FOREIGN KEY (RelatedPostId) REFERENCES posts (Id)
+);
+
+CREATE TABLE posts (
+    Id INTEGER PRIMARY KEY,  -- Format: Sequential integer identifier commonly used as a unique record ID.
+    PostTypeId INTEGER,  -- Format: Numerical identifier representing the type of the post (e.g., question, answer).
+    AcceptedAnswerId INTEGER,  -- Format: Foreign key reference to the ID of the accepted answer for a question-type post, if one exists.
+    CreationDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the creation timestamp of the post.
+    Score INTEGER,  -- Format: Numerical value representing the aggregated upvotes minus downvotes score of the post.
+    ViewCount INTEGER,  -- Format: Numerical value representing the total number of views the post has received.
+    Body TEXT,  -- Format: Contains HTML content of the post, including any text and formatting tags.
+    OwnerUserId INTEGER,  -- Format: Foreign key referencing the unique user ID of the post's author.
+    LastActivityDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the last interaction date/time (e.g., edits or comments) on the post.
+    Title TEXT,  -- Format: Brief textual title summarizing the content of the post.
+    Tags TEXT,  -- Format: HTML-like format containing tags enclosed in angle brackets (e.g., '<tag1><tag2>').
+    AnswerCount INTEGER,  -- Format: Numerical value representing the total number of answers to a question-type post.
+    CommentCount INTEGER,  -- Format: Numerical value representing the total number of comments associated with the post.
+    FavoriteCount INTEGER,  -- Format: Numerical value representing the total number of times the post has been marked as a favorite by users.
+    LastEditorUserId INTEGER,  -- Format: Foreign key referencing the unique user ID of the last editor of the post.
+    LastEditDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the timestamp of the last edit made to the post.
+    CommunityOwnedDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the date/time when the post became community-owned.
+    ParentId INTEGER,  -- Format: Foreign key reference to the ID of another post that is the parent of this post (used for answers or comments).
+    ClosedDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' indicating when the post was closed (e.g., for question-type posts).
+    OwnerDisplayName TEXT,  -- Format: Textual display name of the post's owner; may contain regular names or dynamically generated usernames.
+    LastEditorDisplayName TEXT,  -- Format: Textual display name of the last editor of the post; similar formatting to OwnerDisplayName.
+
+    CONSTRAINT fk_posts_owneruserid FOREIGN KEY (OwnerUserId) REFERENCES users (Id),
+    CONSTRAINT fk_posts_lasteditoruserid FOREIGN KEY (LastEditorUserId) REFERENCES users (Id),
+    CONSTRAINT fk_posts_parentid FOREIGN KEY (ParentId) REFERENCES posts (Id)
+);
+
+CREATE TABLE tags (
+    Id integer PRIMARY KEY,  -- Format: An integer, unique identifier for each tag, incrementally assigned as tags are created.
+    TagName text,  -- Format: Lowercase alphanumeric text without spaces; hyphens may separate words or components of the tag.
+    `Count` integer,  -- Format: Positive integer indicating the number of occurrences or references associated with the tag.
+    ExcerptPostId integer,  -- Format: An integer linking to the Id column of the posts table; represents the post containing the tag excerpt.
+    WikiPostId integer,  -- Format: An integer linking to the Id column of the posts table; represents the post that acts as a wiki resource for the tag.
+    CONSTRAINT fk_tags_excerptpostid FOREIGN KEY (ExcerptPostId) REFERENCES posts (Id),  -- Format: Ensures ExcerptPostId corresponds to a valid post Id.
+    CONSTRAINT fk_tags_wikipostid FOREIGN KEY (WikiPostId) REFERENCES posts (Id)  -- Format: Ensures WikiPostId corresponds to a valid post Id.
+);
+
+CREATE TABLE users (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique numeric identifier assigned sequentially
+    Reputation INTEGER,  -- Format: Non-negative integer representing user reputation score
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the date and time are precise to milliseconds
+    DisplayName TEXT,  -- Format: Alphanumeric string representing user-chosen display name (case-sensitive, may include special characters or spaces)
+    LastAccessDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the date and time are precise to milliseconds
+    WebsiteUrl TEXT,  -- Format: Fully-qualified URL starting with 'http://' or 'https://', optionally ending with a '/'
+    Location TEXT,  -- Format: Free-text location information, usually city, state/province, and/or country
+    AboutMe TEXT,  -- Format: HTML-formatted text containing user-provided bio (may include paragraphs, lists, and special characters)
+    Views INTEGER,  -- Format: Non-negative integer showing total profile views
+    UpVotes INTEGER,  -- Format: Non-negative integer representing total number of upvotes received by the user
+    DownVotes INTEGER,  -- Format: Non-negative integer representing total number of downvotes received by the user
+    AccountId INTEGER,  -- Format: Unique numeric identifier for the user's account (distinct from Id)
+    Age INTEGER,  -- Format: Positive integer representing the user's age in years
+    ProfileImageUrl TEXT  -- Format: Fully-qualified image URL that includes 'http://' or 'https://', often ending in an image file extension or containing query parameters
+);
+
+CREATE TABLE votes (
+    Id integer PRIMARY KEY,  -- Format: Sequential unique integer identifier assigned to each vote.
+    PostId integer,  -- Format: Unique integer identifier corresponding to a referenced post.
+    VoteTypeId integer,  -- Format: Integer identifier indicating the type of vote. Maps to a predefined set of vote types.
+    CreationDate date,  -- Format: ISO 8601 date 'YYYY-MM-DD' where the first 4 digits represent the year, the middle 2 digits represent the month (01-12), and the last 2 digits represent the day (01-31).
+    UserId integer,  -- Format: Unique integer identifier corresponding to a user, referencing the users table.
+    BountyAmount integer,  -- Format: Non-negative integer indicating the amount of bounty awarded (0 if no bounty).
+    CONSTRAINT fk_votes_postid FOREIGN KEY (PostId) REFERENCES posts (Id),  -- Foreign key constraint ensuring PostId exists in posts table.
+    CONSTRAINT fk_votes_userid FOREIGN KEY (UserId) REFERENCES users (Id)  -- Foreign key constraint ensuring UserId exists in users table.
+);
+
+
+
+enhanced_schema_response:
+```json
+{
+    "badges": "-- Badge Information Table: Used to store information about user achievements represented by badges. \n-- This table includes the badge ID, the associated user, badge name, and the date the badge was awarded.\n-- Contains the following constraints: \n--   Primary Key: Id (each badge has a unique ID).\n--   Foreign Key: UserId references the 'users' table.\n-- Main use cases: Tracking user achievements, recognition, and displaying badges earned by users within a system."
+}
+```
+
+```json
+{
+    "comments": "-- Comments Table: Stores comments from users on specific posts within the platform.\n-- This table includes a comment ID, the post the comment belongs to, its author, the comment's text/score, and associated metadata like creation date.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each comment).\n--   Foreign Keys: PostId references 'posts' table and UserId references 'users' table.\n-- Main use cases: Storing feedback, discussions, and user commentary on posts."
+}
+```
+
+```json
+{
+    "postHistory": "-- Post History Table: Tracks the changes and history of posts.\n-- This table tracks events such as edits, creations, and other modifications to a post.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each history entry).\n--   Foreign Keys: PostId references 'posts' table and UserId references 'users' table.\n-- Main use cases: Enables revision history tracking, audit trails for posts, and collaborative editing workflows."
+}
+```
+
+```json
+{
+    "postLinks": "-- Post Links Table: Stores relationships between posts (e.g., duplicates, related posts).\n-- This table connects pairs of posts along with metadata about relationship type and the creation date.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each link).\n--   Foreign Keys: PostId and RelatedPostId reference the 'posts' table.\n-- Main use cases: Facilitates navigation between related posts and helps identify connections, duplicates, or references among posts."
+}
+```
+
+```json
+{
+    "posts": "-- Posts Table: Stores information about all posts, including questions and answers.\n-- This table includes data about post IDs, content (body, title, tags), metadata like creation and last activity dates, interactions like views/comments, and relationships between posts.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each post).\n--   Foreign Keys: OwnerUserId and LastEditorUserId reference the 'users' table; ParentId also references 'posts'.\n-- Main use cases: Manages Q&A or discussion posts on the platform, including user-generated content and interactions such as comments or answers."
+}
+```
+
+```json
+{
+    "tags": "-- Tags Table: Provides metadata and categorization for posts.\n-- This table includes tag names, tag usage counts, and references to associated wiki excerpts or documentation posts.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each tag).\n--   Foreign Keys: ExcerptPostId and WikiPostId reference the 'posts' table.\n-- Main use cases: Organizes and categorizes posts for improved discoverability and search."
+}
+```
+
+```json
+{
+    "users": "-- Users Table: Stores user information, including personal details, reputation, and activity statistics.\n-- This table tracks user attributes such as name, reputation score, website URLs, activity metrics (up/downvotes, views), and optional personal data (location, age, about me, and profile image).\n-- Contains the following constraints: \n--   Primary Key: Id (unique numeric ID for each user).\n-- Main use cases: Manages user profiles and attributes for authentication, personalization, and interaction tracking on the platform."
+}
+```
+
+```json
+{
+    "votes": "-- Votes Table: Records voting actions taken by users on posts.\n-- This table tracks votes (e.g., upvotes, downvotes, or bounties) associated with posts alongside metadata like creation date.\n-- Contains the following constraints: \n--   Primary Key: Id (unique ID for each vote).\n--   Foreign Keys: PostId references 'posts' table and UserId references 'users' table.\n-- Main use cases: Tracks user engagement and post popularity metrics, including the distribution of upvotes, downvotes, and rewards."
+}
+```
+
+table_text_list:
+CREATE TABLE badges (
+    Id INTEGER PRIMARY KEY,  -- Format: Numeric unique identifier for the badge.
+    UserId INTEGER,  -- Format: Numeric unique identifier corresponding to a user in the users table.
+    Name TEXT,  -- Format: Descriptive text in camel case or lowercase; represents the badge type or achievement.
+    `Date` DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the first 4 digits are the year, the next 2 digits are the month (01-12), the next 2 digits are the day (01-31), followed by the timestamp in 24-hour format.
+    CONSTRAINT fk_badges_userid FOREIGN KEY (UserId) REFERENCES users (Id)
+);
+---
+CREATE TABLE comments (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique numeric identifier where each value is an increasing integer assigned to a comment.
+    PostId INTEGER,  -- Format: Numeric identifier corresponding to a post, referencing the posts table (foreign key constraint).
+    Score INTEGER,  -- Format: Integer value reflecting upvotes minus downvotes, typically ranging from negative numbers to positive.
+    Text TEXT,  -- Format: Free text containing alphanumeric characters, punctuation, and spaces; may include mentions (e.g., '@username') and emojis.
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:mm:SS.s' representing year, month, day, hour, minute, second, and optional milliseconds.
+    UserId INTEGER,  -- Format: Numeric identifier corresponding to a user, referencing the users table (foreign key constraint).
+    UserDisplayName TEXT,  -- Format: Free text for a user's display name, typically alphanumeric, may include underscores and spaces though no consistent casing is required.
+    CONSTRAINT fk_comments_postid FOREIGN KEY (PostId) REFERENCES posts (Id),
+    CONSTRAINT fk_comments_userid FOREIGN KEY (UserId) REFERENCES users (Id)
+);
+---
+CREATE TABLE postHistory (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique sequential integer starting from 1, used to identify each post history record.
+    PostHistoryTypeId INTEGER,  -- Format: Represents the type of history event as an integer identifier mapped to predefined event types (e.g., 1: initial post, 2: edit, etc.).
+    PostId INTEGER,  -- Format: Integer identifier referencing the corresponding post in the posts table.
+    RevisionGUID TEXT,  -- Format: UUID (Universally Unique Identifier) as a 36-character string in the format 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' where x is a hexadecimal digit.
+    CreationDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' where the first 4 digits are the year, middle 2 digits are the month, and the last 2 digits are the day, followed by the time.
+    UserId INTEGER,  -- Format: Integer identifier referencing the corresponding user in the users table.
+    Text TEXT,  -- Format: Textual content associated with the post history event, supporting full sentences, code snippets, or metadata tags.
+    `Comment` TEXT,  -- Format: Freeform text field containing comments or notes about the post history event, often in plain text or containing URLs.
+    UserDisplayName TEXT,  -- Format: Contains the display name of the user involved in the post history event. Can include alphanumeric characters, spaces, or special characters.
+    CONSTRAINT fk_posthistory_postid FOREIGN KEY (PostId) REFERENCES posts (Id),  -- Constraint: Ensures PostId matches an existing ID in the posts table.
+    CONSTRAINT fk_posthistory_userid FOREIGN KEY (UserId) REFERENCES users (Id)  -- Constraint: Ensures UserId matches an existing ID in the users table.
+);
+---
+CREATE TABLE postLinks (
+    Id INTEGER,  -- Format: Numeric value assigned sequentially and uniquely identifies each record.
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD hh:mm:ss.S' with milliseconds, where YYYY is the year, MM is the month (01–12), DD is the day (01–31), hh is the hour (00–23), mm is the minute (00–59), ss is the second (00–59), and .S adds millisecond precision.
+    PostId INTEGER,  -- Format: Numeric identifier associated with a post, corresponding to an Id in the 'posts' table.
+    RelatedPostId INTEGER,  -- Format: Numeric identifier associated with a related post, corresponding to an Id in the 'posts' table.
+    LinkTypeId INTEGER,  -- Format: Numeric value representing the type of relationship between posts (e.g., 1 = 'related', 3 = 'duplicate').
+    PRIMARY KEY (Id),
+    CONSTRAINT fk_postlinks_postid FOREIGN KEY (PostId) REFERENCES posts (Id),
+    CONSTRAINT fk_postlinks_relatedpostid FOREIGN KEY (RelatedPostId) REFERENCES posts (Id)
+);
+---
+CREATE TABLE posts (
+    Id INTEGER PRIMARY KEY,  -- Format: Sequential integer identifier commonly used as a unique record ID.
+    PostTypeId INTEGER,  -- Format: Numerical identifier representing the type of the post (e.g., question, answer).
+    AcceptedAnswerId INTEGER,  -- Format: Foreign key reference to the ID of the accepted answer for a question-type post, if one exists.
+    CreationDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the creation timestamp of the post.
+    Score INTEGER,  -- Format: Numerical value representing the aggregated upvotes minus downvotes score of the post.
+    ViewCount INTEGER,  -- Format: Numerical value representing the total number of views the post has received.
+    Body TEXT,  -- Format: Contains HTML content of the post, including any text and formatting tags.
+    OwnerUserId INTEGER,  -- Format: Foreign key referencing the unique user ID of the post's author.
+    LastActivityDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the last interaction date/time (e.g., edits or comments) on the post.
+    Title TEXT,  -- Format: Brief textual title summarizing the content of the post.
+    Tags TEXT,  -- Format: HTML-like format containing tags enclosed in angle brackets (e.g., '<tag1><tag2>').
+    AnswerCount INTEGER,  -- Format: Numerical value representing the total number of answers to a question-type post.
+    CommentCount INTEGER,  -- Format: Numerical value representing the total number of comments associated with the post.
+    FavoriteCount INTEGER,  -- Format: Numerical value representing the total number of times the post has been marked as a favorite by users.
+    LastEditorUserId INTEGER,  -- Format: Foreign key referencing the unique user ID of the last editor of the post.
+    LastEditDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the timestamp of the last edit made to the post.
+    CommunityOwnedDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' representing the date/time when the post became community-owned.
+    ParentId INTEGER,  -- Format: Foreign key reference to the ID of another post that is the parent of this post (used for answers or comments).
+    ClosedDate DATETIME,  -- Format: ISO 8601 datetime 'YYYY-MM-DD HH:MM:SS.s' indicating when the post was closed (e.g., for question-type posts).
+    OwnerDisplayName TEXT,  -- Format: Textual display name of the post's owner; may contain regular names or dynamically generated usernames.
+    LastEditorDisplayName TEXT,  -- Format: Textual display name of the last editor of the post; similar formatting to OwnerDisplayName.
+---
+CREATE TABLE tags (
+    Id integer PRIMARY KEY,  -- Format: An integer, unique identifier for each tag, incrementally assigned as tags are created.
+    TagName text,  -- Format: Lowercase alphanumeric text without spaces; hyphens may separate words or components of the tag.
+    `Count` integer,  -- Format: Positive integer indicating the number of occurrences or references associated with the tag.
+    ExcerptPostId integer,  -- Format: An integer linking to the Id column of the posts table; represents the post containing the tag excerpt.
+    WikiPostId integer,  -- Format: An integer linking to the Id column of the posts table; represents the post that acts as a wiki resource for the tag.
+    CONSTRAINT fk_tags_excerptpostid FOREIGN KEY (ExcerptPostId) REFERENCES posts (Id),  -- Format: Ensures ExcerptPostId corresponds to a valid post Id.
+    CONSTRAINT fk_tags_wikipostid FOREIGN KEY (WikiPostId) REFERENCES posts (Id)  -- Format: Ensures WikiPostId corresponds to a valid post Id.
+);
+---
+CREATE TABLE users (
+    Id INTEGER PRIMARY KEY,  -- Format: Unique numeric identifier assigned sequentially
+    Reputation INTEGER,  -- Format: Non-negative integer representing user reputation score
+    CreationDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the date and time are precise to milliseconds
+    DisplayName TEXT,  -- Format: Alphanumeric string representing user-chosen display name (case-sensitive, may include special characters or spaces)
+    LastAccessDate DATETIME,  -- Format: ISO 8601 timestamp 'YYYY-MM-DD HH:MM:SS.s' where the date and time are precise to milliseconds
+    WebsiteUrl TEXT,  -- Format: Fully-qualified URL starting with 'http://' or 'https://', optionally ending with a '/'
+    Location TEXT,  -- Format: Free-text location information, usually city, state/province, and/or country
+    AboutMe TEXT,  -- Format: HTML-formatted text containing user-provided bio (may include paragraphs, lists, and special characters)
+    Views INTEGER,  -- Format: Non-negative integer showing total profile views
+    UpVotes INTEGER,  -- Format: Non-negative integer representing total number of upvotes received by the user
+    DownVotes INTEGER,  -- Format: Non-negative integer representing total number of downvotes received by the user
+    AccountId INTEGER,  -- Format: Unique numeric identifier for the user's account (distinct from Id)
+    Age INTEGER,  -- Format: Positive integer representing the user's age in years
+    ProfileImageUrl TEXT  -- Format: Fully-qualified image URL that includes 'http://' or 'https://', often ending in an image file extension or containing query parameters
+);
+---
+CREATE TABLE votes (
+    Id integer PRIMARY KEY,  -- Format: Sequential unique integer identifier assigned to each vote.
+    PostId integer,  -- Format: Unique integer identifier corresponding to a referenced post.
+    VoteTypeId integer,  -- Format: Integer identifier indicating the type of vote. Maps to a predefined set of vote types.
+    CreationDate date,  -- Format: ISO 8601 date 'YYYY-MM-DD' where the first 4 digits represent the year, the middle 2 digits represent the month (01-12), and the last 2 digits represent the day (01-31).
+    UserId integer,  -- Format: Unique integer identifier corresponding to a user, referencing the users table.
+    BountyAmount integer,  -- Format: Non-negative integer indicating the amount of bounty awarded (0 if no bounty).
+    CONSTRAINT fk_votes_postid FOREIGN KEY (PostId) REFERENCES posts (Id),  -- Foreign key constraint ensuring PostId exists in posts table.
+    CONSTRAINT fk_votes_userid FOREIGN KEY (UserId) REFERENCES users (Id)  -- Foreign key constraint ensuring UserId exists in users table.
+);
+--JSON keys--
+['votes']

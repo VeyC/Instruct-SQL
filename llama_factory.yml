@@ -1,0 +1,43 @@
+name: llama_factory
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - openjdk=21.0.6
+  - pip
+  - lightgbm   
+  - pip:
+      - torch==2.2.0+cu121
+      - torchvision==0.17.0+cu121
+      - torchaudio==2.2.0+cu121
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - uuid-utils==0.12.0
+      - attr
+      - bpemb
+      - func-timeout
+      - ijson
+      - langgraph
+      - networkx
+      - numpy==1.25.2
+      - openai
+      - pandas==2.2.2
+      - pyserini==0.22.1
+      - requests
+      - scikit-learn==1.6.1
+      - sentence-transformers==3.2.1
+      - sentencepiece==0.1.99
+      - tiktoken==0.5.1
+      - gensim==4.3.2
+      - pyarrow==17.0.0
+      - snowflake-connector-python
+      - sql-metadata
+      - sqlglot
+      - sqlparse
+      - tqdm
+      - transformers==4.51.3
+      - typing-extensions
+      - numexpr>=2.8.4
+      - bottleneck>=1.3.6
+      - faiss-gpu
+      - nltk==3.8.1
