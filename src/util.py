@@ -7,6 +7,8 @@ from itertools import combinations, permutations
 import signal
 from contextlib import contextmanager
 
+import sqlglot
+
 def get_last_node_result(execution_history: List[Dict[str, Any]], node_type: str) -> Dict[str, Any]:
     """
     Retrieves the last result for a specific node type from the execution history.
@@ -699,6 +701,47 @@ def process_redundant_columns(columns_used, table_names_only, consistency_redund
 
 
 
+def get_filter_schema_from_sqls(schema_sqls, schema_info_sqls, db_desc):
+    sqls = schema_sqls + schema_info_sqls
+    filter_column_set = set()
+    table_names_only_set = set()
+    filtered_ddl = ""
+    for sql in sqls:
+        try:
+            expression = sqlglot.parse_one(sql, dialect='sqlite')
+            columns = expression.find_all(sqlglot.exp.Column)
+
+            columns_used = set(str(col) for col in columns)
+            table_names_only = set()
+            for table in expression.find_all(sqlglot.exp.Table):
+                # 获取表的基本名称，不包含schema
+                table_names_only.add(table.name)
+            for alias in expression.find_all(sqlglot.exp.TableAlias):
+                if alias.this and hasattr(alias.this, 'name'):
+                    table_names_only.add(alias.this.name)
+
+            filter_column_list = []
+            for t_column in columns_used:
+                try:
+                    _, t_column = t_column.replace('"', '`').split('.')
+                except:
+                    t_column = t_column.replace('"', "`")
+                filter_column_list.append(t_column)
+            # 检查一些字段命名是否合理
+            filter_column_set = filter_column_set | format_table_column_name(filter_column_list)
+            table_names_only_set = table_names_only_set | format_table_column_name(table_names_only)
+            # print("过滤所有涉及的列：", filter_column_list)
+            # print("过滤所有涉及的表：", table_names_only)
+
+            # 提取过滤后的DDL
+            filtered_ddl = extract_filtered_ddl(db_desc, filter_column_list, table_names_only)
+        except:
+            pass
+
+    if filtered_ddl == '':
+        filtered_ddl = db_desc
+
+    return filtered_ddl
 
 
 class SQLSubQueryGenerator:

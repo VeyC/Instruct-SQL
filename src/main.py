@@ -2,6 +2,8 @@
 import argparse
 from datetime import datetime
 import json
+
+import torch
 from run_manager import RunManager
 
 
@@ -32,8 +34,16 @@ if __name__ == "__main__":
     parser.add_argument("--type", type=str, choices=['greedy','major'], help="选择使用greedy或者是major")
     parser.add_argument("--model_name", type=str, help="默认的模型名称")
     parser.add_argument('--log_level', type=str, default='warning', help="Logging level.")
+    parser.add_argument('--pretrained_model_name_or_path', type=str, default='warning', help="Arctic model path.")
+    parser.add_argument("--temperature", type=float, default=0.0, help="温度越高越随机")
+    parser.add_argument("--n", type=int, default=1, help="arctic的生成个数")
 
+    # 获取可用的GPU数量
+    tensor_parallel_size = torch.cuda.device_count()
+    print(f"Available GPUs: {tensor_parallel_size}")
     
+    parser.add_argument("--tensor_parallel_size", type=int, default=1, help="gpu的个数")
+
 
     opt = parser.parse_args()
     opt.run_start_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")

@@ -11,10 +11,11 @@ from evaluate import major_voting
 from pipeline.utils import node_decorator
 from pipeline.pipeline_manager import PipelineManager
 from database_manager import DatabaseManager
+from arctic_manager import ArcticManager
 from llm import model_chose
 from prompt import *
-from util import extract_sql_from_text, extract_rule_from_text, execute_sql, get_last_node_result
-from util import SQLSubQueryGenerator, extract_filtered_ddl, format_table_column_name, process_redundant_columns
+from util import extract_sql_from_text, extract_rule_from_text, execute_sql, get_last_node_result, get_filter_schema_from_sqls
+from util import extract_filtered_ddl, format_table_column_name, process_redundant_columns
 import sqlglot
 
 
@@ -222,14 +223,6 @@ def sql_generation_tool(draft_sql, task, chat_model):
         filtered_ddl = task.db_desc_info
 
 
-    # 提前分解SQL，避免多次调用SQL生成器，这部分目前没有用
-    generator = SQLSubQueryGenerator(draft_sql)
-    sub_queries = generator.generate_sub_queries()
-    sub_queries.append(draft_sql)
-    sub_queries_execution = []
-    for sub_query in sub_queries:
-        sub_queries_execution.append(execute_sql(sub_query, sqlite_dir, task.execute_history))
-
     # 第二次调用LLM，加knowledge确认
     content_input = get_generate_sql_agent_prompt(filtered_ddl, task.question, draft_sql, task.example)
     messages = [{
@@ -261,36 +254,17 @@ def sql_generation_tool(draft_sql, task, chat_model):
 
 @node_decorator(check_schema_status=False)
 def sql_generation(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any]:
-    print('question_id: ', task.question_id, 'enter sql_generation -----')
+    print('question_id: ', task.question_id, ' enter sql_generation -----')
 
     config,node_name = PipelineManager().get_model_para()
     print(f"{node_name=}, {type(execution_history)=}, {type(task)=}")
     paths=DatabaseManager()
     chat_model = model_chose(node_name, config["engine"])
 
-    # db_id = task.db_id
-    # question_id = task.question_id
-    # execute_history = task.execute_history
-    # sqlite_dir = paths.db_path
-    # p = f'/media/hnu/hnu2024/wangqin/python_work/Text2SQL_submit/output/bird/dev/agent_1534.json'
-    # all_sqls = []
-    # all_execution = []
-    # if os.path.exists(p):
-    #     with open(p, 'r', encoding='utf-8') as f:
-    #         datas = json.load(f)
-    #         all_sqls = datas[question_id]['arctic_sql'] + [datas[question_id]['schema_linking'][0], datas[question_id]['schema_linking'][2], datas[question_id]['schema_linking_info'][0], datas[question_id]['schema_linking_info'][2]]
-    #         for sql in all_sqls:
-    #             execute_response = execute_sql(sql, sqlite_dir, execute_history)
-    #             all_execution.append(execute_response)
-    #         print('加载已有数据！')
-
     schema_linking_execution = get_last_node_result(execution_history, "schema_linking")["executions"]
     schema_linking_sql = get_last_node_result(execution_history, "schema_linking")["sqls"]    
     schema_linking_with_info_execution = get_last_node_result(execution_history, "schema_linking_info")["executions"]
     schema_linking_with_info_sql = get_last_node_result(execution_history, "schema_linking_info")["sqls"]    
-
-    # print(schema_linking_execution)
-    # print(schema_linking_with_info_execution)
     
     all_execution = schema_linking_execution + schema_linking_with_info_execution
     all_sqls = schema_linking_sql + schema_linking_with_info_sql
@@ -318,10 +292,9 @@ def sql_generation(task: Any, execution_history: Dict[str, Any]) -> Dict[str, An
         print('跳过，直接赋值！')
 
     else:
-        # pred_sqls = datas[question_id]['arctic_sql']  #TODO 这里调用函数让arctic sql生成8条SQL，还是直接在selection阶段生成吧，不在这边传递了。
         pred_sqls = []
         rules = []
-        for sql in all_sqls[1:]:  # 不改arctic
+        for sql in all_sqls:
             for att in range(MAX_RETRIES):   # TODO 这个错误控制应该不是这么写的
                 try:
                     generation_sql, rule = sql_generation_tool(sql, task, chat_model)
@@ -537,17 +510,32 @@ def sql_selection(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any
     config,node_name = PipelineManager().get_model_para()
     print(f"{node_name=}, {type(execution_history)=}, {type(task)=}")
     paths = DatabaseManager()
+
+    arctic_model = ArcticManager()
+    schema_sqls = get_last_node_result(execution_history, "schema_linking")["sqls"]
+    schema_info_sqls = get_last_node_result(execution_history, "schema_linking_info")["sqls"]
+    filter_schema = get_filter_schema_from_sqls(schema_sqls, schema_info_sqls, task.db_desc)
+    arctic_sqls = arctic_model.infer(
+                input_text="",
+                db_desc=filter_schema,
+                question=task.question,
+                return_all=True  # 返回所有候选SQL
+            )
+    print('+++++'*6)
+    print(arctic_sqls)
+    
     sqlite_dir=paths.db_path
-    question_id = task.question_id
 
     style_refinement_sqls = get_last_node_result(execution_history, "sql_output_refinement")["sqls"]
-    sampling_num = len(style_refinement_sqls)
+    candidate_sqls = arctic_sqls + style_refinement_sqls
+    sampling_num = len(candidate_sqls)
     db_files = [sqlite_dir] * sampling_num
-    mj_pred_sqls = major_voting(db_files, style_refinement_sqls, sampling_num) # [[sql]]   
+    mj_pred_sqls = major_voting(db_files, candidate_sqls, sampling_num) # [[sql]]   
 
-    selection_sql = post_process(mj_pred_sqls[0], sqlite_dir)
+    selection_sql = post_process(mj_pred_sqls[0], sqlite_dir)  # TODO 考虑要不要删除
     response = {
+        "candidate_sqls": candidate_sqls,
         "sqls": selection_sql 
     }
     return response 
-
+    

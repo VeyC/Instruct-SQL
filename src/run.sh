@@ -20,9 +20,14 @@ BASE="$(cd "$(dirname "$0")" && pwd)"
 DATA_ROOT="$BASE/../datasets/bird"
 OUTPUT_ROOT="$BASE/../output/bird"
 
-# pipeline_nodes='schema_linking+schema_linking_info+sql_generation+sql_style_refinement+sql_output_refinement+sql_selection'
 pipeline_nodes='schema_linking+schema_linking_info+sql_generation+sql_style_refinement+sql_output_refinement+sql_selection'
-# pipeline_nodes='schema_linking+schema_linking_info'
+MODEL_NAME="Snowflake/Arctic-Text2SQL-R1-7B"
+# ARCTIC_PATH="$BASE/../model"   # TODO 后续改回来
+ARCTIC_PATH='/media/hnu/LLM/Arctic-Text2SQL-R1-7B'
+ARCTIC_TEMPERATURE='0.8'
+ARCTIC_N='8'
+
+
 
 # Per-mode paths
 if [[ "$MODE" == "dev" ]]; then
@@ -36,6 +41,7 @@ if [[ "$MODE" == "dev" ]]; then
   MEANING_FILE="$OUTPUT_ROOT/dev/column_meaning.json"  
   TABLE_DESC_FILE="$OUTPUT_ROOT/dev/table_desc.json"
   DB_PATH="$DATA_ROOT/dev/dev_databases"
+  ARCTIC_OUTPUT_PATH=“OUTPUT_ROOT/dev/arctic_prediction.json”
   MODEL_NAME="claude-sonnet-4-20250514"
   N_RUNS=4
 else
@@ -58,7 +64,7 @@ fi
 THREADS=16
 
 # Engines for pipeline (can override by setting env vars before running)
-engine1="qwen3-coder-plus" #"gpt-4o"
+engine1="qwen3-coder-plus"
 engine2="claude-sonnet-4-20250514"
 engine3="gpt-5"
 
@@ -100,16 +106,33 @@ bash process_dataset.sh \
 
 echo "Step 2 done. Intermediate JSON: $INTERMEDIATE_JSON"
 
-# python fd.py \
-#   --table_desc_file "$TABLE_DESC_FILE" \
-#   --db_path "/media/hnu/hnu2024/wangqin/python_work/Text2SQL_submit copy/datasets/bird/dev/dev_databases" \
-#   --meaning_file "$MEANING_FILE" \
-#   --mode "dev"\
-#   --model_name "claude-sonnet-4-20250514"
 
-# ---------- Step 3: derive table distributions & metadata ----------
+# ---------- Step 3: download arctic model ----------
 echo
-echo ">>> Step 3: Dataset distribution -> metadata & table descriptions"
+echo ">>> Step 3: download arctic model"
+
+echo "Check if the model already exists: $ARCTIC_PATH"
+
+if [ -d "$ARCTIC_PATH" ] && [ "$(ls -A "$ARCTIC_PATH")" ]; then
+  echo "The model already exists, skip downloading"
+else
+  echo "The model does not exist, start downloading ..."
+
+  mkdir -p "$ARCTIC_PATH"
+
+  huggingface-cli download \
+    "$MODEL_NAME" \
+    --local-dir "$ARCTIC_PATH" \
+    --local-dir-use-symlinks False
+
+  echo "Model download completed!"
+fi
+echo "Step 3 done. Model downloaded at: $ARCTIC_PATH"
+
+
+# ---------- Step 4: derive table distributions & metadata ----------
+echo
+echo ">>> Step 4: Dataset distribution -> metadata & table descriptions"
 # Note: your original script had a typo 'olumn_meaning.json' -> I assume 'column_meaning.json'
 # If your file is named differently, change MEANING_FILE accordingly.
 python dataset_process_for_submit.py \
@@ -121,11 +144,13 @@ python dataset_process_for_submit.py \
   --table_desc_file "$TABLE_DESC_FILE" \
   --db_path "$DB_PATH"
 
-echo "Step 3 done. Metadata at: $METADATA_OUTPUT ; Table desc at: $TABLE_DESC_FILE"
+echo "Step 4 done. Metadata at: $METADATA_OUTPUT ; Table desc at: $TABLE_DESC_FILE"
 
-# ---------- Step 4: run main.py to generate outputs ----------
+
+
+# ---------- Step 5: run main.py to generate outputs ----------
 echo
-echo ">>> Step 4: Run main pipeline (greedy / single-run default)"
+echo ">>> Step 5: Run main pipeline (greedy / single-run default)"
 
 pipeline_setup='{
     "schema_linking": {
@@ -147,14 +172,11 @@ pipeline_setup='{
     "sql_output_refinement": {
         "engine": "'${engine1}'"
     },
-    "sql_finetuned_output_refine": {
-        "finetuned_model": "/media/hnu/LLM/bge-m3"
-    },
     "sql_correction": {
         "engine": "'${engine1}'"
     },
     "sql_selection": {
-        "engine": "'${engine3}'"
+        "engine": "'${engine1}'"
     }
 }'
 
@@ -168,17 +190,16 @@ python -u ./main.py \
   --pipeline_setup "$pipeline_setup" \
   --pipeline_nodes ${pipeline_nodes} \
   --db_root_path "$DB_ROOT" \
+  --pretrained_model_name_or_path "$ARCTIC_PATH" \
+  --temperature "$ARCTIC_TEMPERATURE" \
+  --n "$ARCTIC_N"
 
-echo "Step 4 done. Review output under $OUTPUT_ROOT/$MODE"
+echo "Step 5 done. Review output under $OUTPUT_ROOT/$MODE"
+
 
 # ---------- Done ----------
 echo
 echo "=== Pipeline finished for mode: $MODE ==="
-
-
-
-
-
 
 
 

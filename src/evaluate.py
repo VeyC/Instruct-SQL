@@ -22,6 +22,7 @@ import random
 import re
 import sqlite3
 import sys
+from typing import Any, Hashable
 import warnings
 from itertools import combinations, permutations
 import numpy as np
@@ -41,16 +42,109 @@ DO_PRINT = True
 SELF_CONSISTENCY = "OmniSQL" #"Snow"  # or OmniSQL
 
 
-def parse_option():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pred", type=str, default="predict_dev.json")
-    parser.add_argument("--gold", type=str, default="./bird/dev/dev.json")
-    parser.add_argument("--db_path", type=str, default="./bird/dev/dev_databases")
-    parser.add_argument("--mode", type=str, default="greedy_search")
+def efficient_soft_df_similarity(df1: pd.DataFrame, df2: pd.DataFrame) -> float:
+    """
+    Computes the "soft denotation" similarity between two DataFrames:
+      - For each column, get the frequency counts of each distinct value in df1 and df2
+      - Align them by the union of distinct values
+      - Accumulate 'real agreement' vs. 'possible agreement'
+      - Return total_real_agreement / total_possible_agreement
 
-    opt = parser.parse_args()
+    Args:
+        df1, df2 (pd.DataFrame): DataFrames to compare
 
-    return opt
+    Returns:
+        float: Similarity score in [0, 1].
+    """
+    # If either DataFrame is empty in rows or columns, similarity = 0
+    if df1 is None or df2 is None or len(df1) == 0 or len(df2) == 0:
+        return 0.0
+
+    df1 = df1.copy()  # Precaution
+    df2 = df2.copy()
+
+    def _ensure_hashable_values(value: Any) -> Hashable:
+        if isinstance(value, Hashable):
+            return value
+        return repr(value)
+
+    # Use applymap for DataFrames
+    df1 = df1.applymap(_ensure_hashable_values)
+    df2 = df2.applymap(_ensure_hashable_values)
+
+    # For rare cases where df has two columns with the same name (sic!)
+    def _select_1d(df, col):
+        c = df[col]
+        if len(c.shape) == 2:
+            return pd.DataFrame(c.stack().values)
+        return c
+
+    # Precompute value_counts for each column
+    df1_counts = {col: _select_1d(df1, col).value_counts(dropna=False) for col in df1.columns}
+    df2_counts = {col: _select_1d(df2, col).value_counts(dropna=False) for col in df2.columns}
+
+    total_real_agreement = 0.0
+    total_possible_agreement = 0.0
+
+    # Union of all columns
+    all_columns = df1.columns.union(df2.columns)
+
+    for col in all_columns:
+        vc1 = df1_counts.get(col)
+        vc2 = df2_counts.get(col)
+
+        if vc1 is None or vc1.empty:
+            total_possible_agreement += vc2.to_numpy().sum()
+            continue
+
+        if vc2 is None or vc2.empty:
+            total_possible_agreement += vc1.to_numpy().sum()
+            continue
+
+        # 1) Get union of distinct values in that column
+        union_idx = pd.Index(pd.concat([vc1.index.to_frame(), vc2.index.to_frame()], axis=0).iloc[:, 0].unique())
+        if union_idx.dtype != "object":
+            union_idx = union_idx.astype(object)
+
+        # 2) Reindex both frequency series to that union, fill missing with 0
+        freq1 = vc1.reindex(union_idx, fill_value=0).values
+        freq2 = vc2.reindex(union_idx, fill_value=0).values
+
+        if np.nan in union_idx:
+            freq1[union_idx.isnull()] += freq2[union_idx.isnull()]
+            freq2[union_idx.isnull()] = 0
+
+        # 3) Vectorized computations (avoiding DataFrame overhead)
+        possible_agreement = np.maximum(freq1, freq2).sum()
+        accumulated_difference = np.abs(freq1 - freq2).sum()
+        real_agreement = possible_agreement - accumulated_difference
+
+        # Accumulate column-wise
+        total_real_agreement += real_agreement
+        total_possible_agreement += possible_agreement
+
+    # Avoid division by zero if possible_agreement == 0
+    if total_possible_agreement == 0:
+        return 0.0
+
+    return total_real_agreement / total_possible_agreement
+
+
+def calculate_similarity_matrix(
+    candidate_sqls,
+) -> np.ndarray:
+    sql_len = len(candidate_sqls)
+    similarity_matrix = np.zeros((sql_len, sql_len))
+    for idx1 in range(sql_len):
+        df1 = candidate_sqls[idx1]
+        if df1 is not None:
+            similarity_matrix[idx1, idx1] += 1
+        for idx2 in range(idx1 + 1, sql_len):
+            df2 = candidate_sqls[idx2]
+            similarity = efficient_soft_df_similarity(df1, df2)
+            similarity_matrix[idx1, idx2] += similarity
+            similarity_matrix[idx2, idx1] += similarity
+    return similarity_matrix
 
 
 def execute_sql(data_idx, db_file, sql):
@@ -67,6 +161,7 @@ def execute_sql(data_idx, db_file, sql):
             conn.execute("BEGIN TRANSACTION;")
             cursor.execute(sql)
             rows = cursor.fetchall()
+            rows = list(set(rows))    # 这里我改了一下
             execution_res = frozenset(rows)  # make the result hashable
             conn.rollback()
             if len(execution_res)>0 and rows!= [(0,)] and rows!= [(None,)]:
@@ -94,104 +189,6 @@ def execute_sql(data_idx, db_file, sql):
 
     finally:
         conn.close()
-
-
-
-def compare_sql(question_id, db_file, question, ground_truth, pred_sql):
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    correctness = 0  
-    ground_truth_execution = ()
-    pred_execution = ()
-    correct_method_ids = []
-    execute_log_min = 100
-    execute_log = []
-    for i, p_sql in enumerate(pred_sql):
-        try:
-            conn.execute("BEGIN TRANSACTION;")
-            if 'thrombosis_prediction' in db_file and 'Laboratory' in p_sql and 'JOIN' in p_sql: # 加这个 0.6870
-                p_sql = p_sql.replace('DISTINCT', '')   # 这个在change的用例中不需要，因为它已经被改正了 
-            if 'debit_card_specializing' in db_file and 'JOIN' in p_sql and 'yearmonth' in p_sql:  # 加这个  多1个
-                p_sql = p_sql.replace('DISTINCT', '')   
-            if 'codebase_community' in db_file : # 加这个 0多5个
-                p_sql = p_sql.replace('DISTINCT', '')  
-            if 'financial' in db_file : # 加这个 
-                p_sql = p_sql.replace('DISTINCT', '') # 加这个， 多3个
-            p_sql = p_sql.replace('LEFT JOIN', 'INNER JOIN')
-
-            # financial 里面不需要进行百分比 * 100，除非包含``
-            # if 'financial' in db_file and '`' not in p_sql:
-            #     p_sql = p_sql.replace('* 100', '').replace('*100','')
-            
-            # pattern = r"LIKE\s+'%?(.*?)%?'"   # 不要加这个
-            # if not re.search(pattern, ground_truth) and re.search(pattern, p_sql) and 'date' not in p_sql.lower():  # 加这个，多3个
-            #     p_sql = re.sub(pattern, r"LIKE '\1'", p_sql)
-
-            cursor.execute(p_sql)
-            predicted_res = cursor.fetchall()
-
-            cursor.execute(ground_truth)
-            ground_truth_res = cursor.fetchall()
-            
-            if ground_truth_res:
-                ground_truth_execution = (ground_truth_res[:5],len(ground_truth_res))
-            if predicted_res:
-                pred_execution = (predicted_res[:5], len(predicted_res))
-
-            execute_log.append(str(set(predicted_res)))
-            # cursor.execute('EXPLAIN ' + p_sql)
-            # explain_len = len(cursor.fetchall())
-
-            # if explain_len < execute_log_min:
-            #     # if set(predicted_res) == set(ground_truth_res):
-            #     if flexible_result_comparison(predicted_res, ground_truth_res):
-            #         correctness = 1
-            #     else:
-            #         correctness = 0
-            #     execute_log_min = explain_len
-
-            if set(predicted_res) == set(ground_truth_res):  #TODO 注意，这里有个潜在的问题，是会去重，不知道原作者是不是这样写的。
-                correctness = 1
-                correct_method_ids.append(i)
-            # else:
-            #     correctness = 0
-                # break   
-            # if predicted_res:
-            #     break
-            conn.rollback()
-        except sqlite3.DatabaseError:
-            conn.rollback()
-    conn.close()
-
-    # 用字典保存相同值的所有下标
-    index_map = defaultdict(list)
-    for i, v in enumerate(execute_log):
-        index_map[v].append(i)
-
-    # 将每个值的下标列表按原始出现顺序返回
-    result = list(index_map.values())
-
-    # print(question_id, correct_method_ids, result)
-
-    return question_id, db_file, question, ground_truth, pred_sql, ground_truth_execution, pred_execution, correctness
-
-
-def compare_sql_wrapper(args, timeout):
-    """Wrap execute_sql for timeout"""
-    try:
-        result = func_timeout(timeout, compare_sql, args=args)
-    except KeyboardInterrupt:
-        sys.exit(0)
-    except FunctionTimedOut:
-        # result = (*args, 0)
-        question_id, db_file, question, ground_truth, pred_sql = args
-        result = (question_id, db_file, question, ground_truth, pred_sql, (), (), 0)
-    except Exception:
-        # result = (*args, 0)
-        question_id, db_file, question, ground_truth, pred_sql = args
-        result = (question_id, db_file, question, ground_truth, pred_sql, (), (), 0)
-    return result
-
 
 def execute_sql_wrapper(data_idx, db_file, sql, timeout):
     try:
@@ -239,21 +236,6 @@ def execute_callback_execute_sqls(result):
     )
 
 
-def evaluate_sqls_parallel(question_ids, db_files, questions, pred_sqls, ground_truth_sqls, num_cpus=1, timeout=1):
-    """Execute the sqls in parallel"""
-    pool = mp.Pool(processes=num_cpus)
-    for question_id, db_file, question, pred_sql, ground_truth in zip(
-        question_ids, db_files, questions, pred_sqls, ground_truth_sqls
-    ):
-        pool.apply_async(
-            compare_sql_wrapper,
-            args=((question_id, db_file, question, ground_truth, pred_sql), timeout),
-            callback=execute_callback_evaluate_sql,
-        )
-    pool.close()
-    pool.join()
-
-
 def execute_sqls_parallel(db_files, sqls, num_cpus=1, timeout=1):
     pool = mp.Pool(processes=num_cpus)
     for data_idx, db_file, sql in zip(list(range(len(sqls))), db_files, sqls):
@@ -281,7 +263,7 @@ def major_voting(db_files, pred_sqls, sampling_num, return_random_one_when_all_e
     mj_pred_sqls = []
     execution_results = []
     # execute all sampled SQL queries to obtain their execution results
-    execute_sqls_parallel(db_files, pred_sqls, num_cpus=20, timeout=10)
+    execute_sqls_parallel(db_files, pred_sqls, num_cpus=20, timeout=5)
     execution_results = sorted(execution_results, key=lambda x: x["data_idx"])
     if DO_PRINT:
         print("len(execution_results):", len(execution_results))

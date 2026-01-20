@@ -1,3 +1,6 @@
+
+# 1. Question Analysis: Follow all rules mentioned in the question (such as format conversions, pattern matching, and value transformations, usually indicated by "refer to") when analysis the question.
+
 def get_filter_ddl_agent_prompt(db_desc, question):
     FILTER_DDL_AGNET_PROMPT = f"""Follow the STEP to answer the question.
 # STEP:
@@ -42,47 +45,10 @@ Question:
 """
     return FILTER_DDL_AGNET_PROMPT
 
-
-#    REFINE_SQL_AGENT = f"""# Goal: Your task is to perform a preference check on the given SQL statement. You must strictly follow the specified rules and examples, convert it into a compliant, executable SQL statement. You cannot make any changes except for handling the following rules, even if the logic in the query might be incorrect.
-
-# - 5. Cardinality Check: You must further understand user intent based on these cardinality relationships, especially when there is an N:1 or M:N ratio between two attributes, it can affect how DISTINCT, GROUP BY and ORDER BY are used. For example:
-#   Example 1: 
-#   Question 1: List the variety of students’ ages.
-#   SQL 1: SELECT DISTINCT age
-#          FROM Student;
-#   Explanation: student_id → age is N:1 (multiple students can have the same age). Querying age directly may return duplicates, so DISTINCT is needed.
-
-#   Example 2: 
-#   Question 2: Which age has the best admission scores?
-#   SQL 2:    SELECT age, AVG(admission_score) AS avg_score
-#             FROM Student
-#             GROUP BY age
-#             ORDER BY avg_score DESC
-#             LIMIT 1;
-#   Explanation: age → student_id is 1:N (one age can correspond to multiple students). We need to GROUP BY age to aggregate admission scores per age group before finding the highest average.
-
-#   Example 3: 
-#   Question 3: If age and student are 1:1, which age has the best admission score?
-#   SQL 3:    SELECT age, admission_score
-#             FROM Student
-#             ORDER BY admission_score DESC
-#             LIMIT 1;
-#   Explanation: Since each age corresponds to exactly one student, aggregating by age is unnecessary. Each age already maps to a single admission score, so no GROUP BY is needed.
-
-# ## Action: 
-# - TOOL_NAME: get_column_cardinalities
-# - Function: Check and return the cardinality relationship between two columns in the SAME table (one-to-one, one-to-many, many-to-many).
-# - ActionInput:
-# ```json
-# [["table1.col1", "table1.col2"], ...]
-# ```
-# - Action Example:
-# Action: get_column_cardinalities
-# ActionInput:
-# ```json
-# [["Student.id", "Student.name"], ["Course.id", "Course.teacher_id"]]
-# ``` 
-
+# 这是bird的，spider2的结构不同
+# # Database Schema:
+# {item["db_table_column_desc"]}
+# This schema describes the database's structure, including tables, columns, primary keys, foreign keys, and any relevant relationships or constraints.
 
 
 def get_generate_sql_agent_prompt(filtered_ddl, question, sql, examples):
@@ -157,24 +123,6 @@ ActionInput:
 -- SQL query
 ```
 
-# Output:
-Answer the following questions to the best of your ability.
-Use the following format:
-Requirement: The requirement you need to follow.
-Think: You should always think about what to do
-Action: The action to take
-ActionInput: The input for the action
-**VERY IMPORTANT: After writing ActionInput, STOP generating. Wait for the system to provide the Observation. DO NOT generate the Observation yourself.**
-Observation: The result of the action. Wait for the Observation before proceeding. 
-…
-Think: I now know the final answer
-Final Answer: The final answer to the original input question, Please follow the following template.
-Your final answer should be enclosed within `<answer>` tags.
-Ensure that your SQL query follows the correct syntax and is formatted as follows:
-
-```sql
--- Your Single SQL query here
-```
 
 Example format:
 <answer> Summary of the thought process leading to the final SQL query. **It should be made clear that the data may not be perfect, but you MUST generate an SQL query for the user (perhaps suboptimal).** [Limited by 1K tokens]
@@ -283,9 +231,11 @@ SQLite
 """
     return REFINE_SQL_AGENT
 
+# - 0. Based on the conversation, explicitly summarize the constraints that the given SQL are required to keep. These rules must be treated as immutable global constraints and strictly enforced in all subsequent steps.
+
 
 def get_output_sql_agent_prompt(question, sql):  
-    OUTPUT_SQL_AGENT = f"""# Goal: Your task is to perform a column check on the given SQL statement.
+    OUTPUT_SQL_AGENT = f"""# Goal: Follow the STEP, your task is to perform a column check on the given SQL statement.
 
 # STEP:
 

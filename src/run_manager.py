@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from database_manager import DatabaseManager
+from arctic_manager import ArcticManager
 from pipeline.pipeline_manager import PipelineManager
 from pipeline.workflow_builder import build_pipeline
 from task import Task
@@ -71,7 +72,12 @@ class RunManager:
         logger.log(f"Processing task: {task.db_id} {task.question_id}", "info")
         pipeline_manager = PipelineManager(json.loads(self.args.pipeline_setup))  # 初始化，单例
         database_manager = DatabaseManager(db_mode=self.args.mode, db_root_path=self.args.db_root_path, db_id=task.db_id) # 初始化，单例
-
+        arctic_manager = ArcticManager(
+                                self.args.pretrained_model_name_or_path,
+                                self.args.tensor_parallel_size,
+                                self.args.temperature,
+                                self.args.n
+                            )
         initial_state = {"keys": {"task": task, "execution_history": []}} 
 
         print(f'处理 question id:{task.question_id}. 建立工作流 ...')
