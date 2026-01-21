@@ -152,7 +152,7 @@ Draft SQL:
 
 
 
-def get_style_sql_agent_prompt(question, sql, rules):
+def get_style_sql_agent_test_prompt(question, sql, rules):
     REFINE_SQL_AGENT = f"""# Goal: Your task is to perform a preference check on the given SQL statement. You must strictly follow both the given rules and check rules bellow, and convert the given SQL into a compliant, executable SQL statement.
 
 # Given Rules:
@@ -205,6 +205,84 @@ Step 6: Format Check
 - No use of `||`. Safe.  
 
 Step 7: Add NULL Check  
+- No ORDER BY ASC is in the SQL. Safe
+
+...
+
+Therefore, the corrected SQL should be:  
+`SELECT MAX(age) FROM student;`  
+</think>
+
+<answer>  
+```sql
+SELECT MAX(age) FROM student;
+```
+</answer>
+
+# Database Engine: 
+SQLite
+
+# Given SQL:
+{sql}
+
+# Question:
+{question}
+
+"""
+    return REFINE_SQL_AGENT
+
+
+def get_style_sql_agent_dev_prompt(question, sql, rules):
+    REFINE_SQL_AGENT = f"""# Goal: Your task is to perform a preference check on the given SQL statement. You must strictly follow both the given rules and check rules bellow, and convert the given SQL into a compliant, executable SQL statement.
+
+# Given Rules:
+{rules}
+
+The Given rules contain instructions from the previous model that generated the given SQL, which you must follow **unless it violates the following Check rules, such as `IS NOT NULL` check in the return column. According to Check rule 1 bellow, it should remove.** 
+
+# Check Rules:
+
+- 1. Value Check Rule: **Prohibit value checks (such as IS NOT NULL check in the return column) unless the user explicitly requests them in the Question or it satisfies the Rule 6 (Add NULL Check Rule) bellow. If such checks appear in the SQL, remove them.** 
+
+- 2. Date Check Rule: Year extraction and age calculation: STRFTIME ('%Y', time_now) - STRFTIME ('%Y', Birthday). ONLY year.
+
+- 3. Percentage Check Rule: When generating SQL for percentage-related questions,  ensure the SELECT statement explicitly includes "* 100" in the **numerator** unless the user explicitly don't request them in the Question..
+
+- 4. Division Check Rule: When it comes to division, always cast denominator to FLOAT or REAL.
+
+- 5. Format Check Rule: NEVER use `||`, `GROUP_CONCAT` or `CONCAT` in SQL queries. Individual columns in the SELECT clause should be returned as separate fields without combining them.
+
+- 6. Add NULL Check Rule: MUST Add IS NOT NULL for columns used in `ORDER BY ... ASC`. 
+
+- 7. Entity Rule: Prohibit using `SELECT *`. When the user does not specify the fields to return, default to returning the entity identifier to represent entity.
+
+- 8. **Logic Preservation Rule (CRITICAL):**Except for SQL segments explicitly modified by the above rules, STRICTLY PROHIBIT changing logical operators or values, even though they have errors.
+
+# Output format:
+<think> Step-by-step reasoning, following the Check Rules, check and correct the given SQL. [Limited by 4K tokens] </think>
+<answer> Summary of the thought process leading to the final SQL query. **It should be made clear that the data may not be perfect, but you MUST generate an SQL query for the user (perhaps suboptimal).** [Limited by 1K tokens]
+
+```sql
+Correct SQL query here
+```
+</answer>
+
+Example Output:
+<think>  
+- User question: "What is the maximum age of the students?"  
+- Given SQL: `SELECT MAX(age) FROM student WHERE age > 0 and age IS NOT NULL;` 
+
+Now, I need follow the STEP to check and correct the given SQL.  
+
+Step 1: Value Check Rule
+- remove `age > 0` and `age IS NOT NULL`, cause it doesn't explicitly required in the User question.
+
+...
+
+Step 5: Format Check  
+- No use of `||`. Safe.  
+
+Step 6: Add NULL Check  
 - No ORDER BY ASC is in the SQL. Safe
 
 ...

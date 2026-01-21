@@ -81,14 +81,17 @@ def fill_table_desc_and_column_format(samples, table_desc_dict, meaning_file):
                     # print('table_name:', table_name, repr(table_name))
                     # print("column_desc.keys:", table_desc[table_name]['column_desc'].keys())
                     # print('column_name:', column_name, repr(column_name))
-                    format = table_desc[table_name]['column_desc'][column_name]['Format']
-                                        
                     try:
                         column_full_name = f"{db_id}|{table_name.replace('`', '')}|{column_name.replace('`', '')}"
                         column_description = column_meaning_dict[column_full_name]
-                        line = f"{line}; Description: {column_description} Format:{format}"
+                        line = f"{line}; Description: {column_description}"
                     except:
-                        line = f"{line}; Format:{format}"
+                        pass
+                    try:
+                        format = table_desc[table_name]['column_desc'][column_name]['Format']
+                        line = f"{line}; Format: {format}"
+                    except:
+                        pass
                     try:
                         range = table_desc[table_name]['column_desc'][column_name]['Range']
                         line = f"{line}; Data Range: {range}"

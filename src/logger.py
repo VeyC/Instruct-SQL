@@ -2,10 +2,11 @@ import logging
 import json
 from threading import Lock
 from pathlib import Path
+import threading
 from typing import Any, List, Dict, Union
 
 class Logger:
-    _instance = None
+    _local = threading.local()  # 每个线程有自己的存储空间
     _lock = Lock()
 
     def __new__(cls, db_id: str = None, question_id: str = None, result_directory: str = None):
@@ -25,12 +26,14 @@ class Logger:
         """
         with cls._lock:
             if (db_id is not None) and (question_id is not None):
-                cls._instance = super(Logger, cls).__new__(cls)
-                cls._instance._init(db_id, question_id, result_directory)
+                # 为当前线程创建独立实例
+                instance = super(Logger, cls).__new__(cls)
+                instance._init(db_id, question_id, result_directory)
+                cls._local.instance = instance
             else:
-                if cls._instance is None:
+                if not hasattr(cls._local, 'instance'):
                     raise ValueError("Logger instance has not been initialized.")
-            return cls._instance
+            return cls._local.instance
 
     def _init(self, db_id: str, question_id: str, result_directory: str):
         """

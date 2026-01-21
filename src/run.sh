@@ -30,35 +30,18 @@ ARCTIC_N='8'
 
 
 # Per-mode paths
-if [[ "$MODE" == "dev" ]]; then
-  DB_ROOT="$DATA_ROOT/"
-  INPUT_JSON="$DATA_ROOT/dev/dev.json"
-  TABLES_JSON="$DATA_ROOT/dev/dev_tables.json"
-  INDEX_ROOT="$OUTPUT_ROOT/dev/db_contents_index"
-  TEMP_DIR="$OUTPUT_ROOT/dev/temp"
-  INTERMEDIATE_JSON="$OUTPUT_ROOT/dev/dev_bird.json"
-  METADATA_OUTPUT="$OUTPUT_ROOT/dev/dev_bird_metadata.json"
-  MEANING_FILE="$OUTPUT_ROOT/dev/column_meaning.json"  
-  TABLE_DESC_FILE="$OUTPUT_ROOT/dev/table_desc.json"
-  DB_PATH="$DATA_ROOT/dev/dev_databases"
-  ARCTIC_OUTPUT_PATH=“OUTPUT_ROOT/dev/arctic_prediction.json”
-  MODEL_NAME="claude-sonnet-4-20250514"
-  N_RUNS=4
-else
-  DB_ROOT="$DATA_ROOT/"
-  INPUT_JSON="$DATA_ROOT/test/test.json"
-  TABLES_JSON="$DATA_ROOT/test/test_tables.json"
-  INDEX_ROOT="$OUTPUT_ROOT/test/db_contents_index"
-  TEMP_DIR="$OUTPUT_ROOT/test/temp"
-  INTERMEDIATE_JSON="$OUTPUT_ROOT/test/test_bird.json"
-  METADATA_OUTPUT="$OUTPUT_ROOT/test/test_bird_metadata.json"
-  MEANING_FILE="$OUTPUT_ROOT/test/column_meaning.json"
-  TABLE_DESC_FILE="$OUTPUT_ROOT/test/table_desc.json"
-  DB_PATH="$DATA_ROOT/test/test_databases"
-  MODEL_NAME="claude-sonnet-4-20250514"
-  N_RUNS=1
-fi
-
+DB_ROOT="$DATA_ROOT/"
+INPUT_JSON="$DATA_ROOT/$MODE/$MODE.json"
+TABLES_JSON="$DATA_ROOT/$MODE/${MODE}_tables.json"
+INDEX_ROOT="$OUTPUT_ROOT/$MODE/db_contents_index"
+TEMP_DIR="$OUTPUT_ROOT/$MODE/temp"
+INTERMEDIATE_JSON="$OUTPUT_ROOT/$MODE/${MODE}_bird.json"
+METADATA_OUTPUT="$OUTPUT_ROOT/$MODE/${MODE}_bird_metadata.json"
+MEANING_FILE="$OUTPUT_ROOT/$MODE/column_meaning.json"
+TABLE_DESC_FILE="$OUTPUT_ROOT/$MODE/table_desc.json"
+DB_PATH="$DATA_ROOT/$MODE/${MODE}_databases"
+MODEL_NAME="claude-sonnet-4-20250514"
+PREDICT_OUTPUT="$OUTPUT_ROOT/$MODE/final_prediction.json"
 
 # Parallel threads for index building
 THREADS=16
@@ -78,6 +61,20 @@ echo "INDEX_ROOT=$INDEX_ROOT"
 echo "INPUT_JSON=$INPUT_JSON"
 echo "INTERMEDIATE_JSON=$INTERMEDIATE_JSON"
 echo "METADATA_OUTPUT=$METADATA_OUTPUT"
+
+
+
+
+# ---------- Step 0: optional dev tied-append processing ----------
+if [[ "$MODE" == "dev" ]]; then
+  echo
+  echo ">>> Step 0: Apply tied append overrides for dev"
+  APPEND_JSON="$DATA_ROOT/$MODE/${MODE}_tied_append.json"
+  python "$BASE/apply_tied_append.py" \
+    --input-json "$INPUT_JSON" \
+    --append-json "$APPEND_JSON"
+  echo "Step 0 done."
+fi
 
 # ---------- Step 1: build contents index (requires a JVM) ----------
 echo
@@ -180,12 +177,12 @@ pipeline_setup='{
     }
 }'
 
-# 可以每种方案生成4个候选答案，即n=4
 
 python -u ./main.py \
   --mode "$MODE" \
   --type major \
   --input_file "$METADATA_OUTPUT" \
+  --output_file "$PREDICT_OUTPUT" \
   --model_name "$MODEL_NAME" \
   --pipeline_setup "$pipeline_setup" \
   --pipeline_nodes ${pipeline_nodes} \

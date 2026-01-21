@@ -5,7 +5,64 @@ warnings.filterwarnings('ignore')
 from itertools import combinations
 import snowflake.connector
 import sqlite3
+def format_table_column_name(name: str) -> str:
+    '''格式化table和column的名称，有时候会少了`'''
+    if not name or not isinstance(name, str):  # 这一行保证None/空/非字符串直接原样返回
+        return name
+    if (name.startswith('`') and name.endswith('`')) or (name.startswith('"') and name.endswith('"')):
+        return name
+    sqlite_keywords = {
+        "ACCESS", "ADD", "AFTER", "ALL", "ALTER",
+        "ANALYZE", "AND", "AS", "ASC", "AVG",
+        "BEFORE", "BEGIN", "BETWEEN", "BIGINT", "BINARY",
+        "BIT", "BLOB", "BOOLEAN", "BOTH", "BREAK",
+        "BY", "CALL", "CASCADE", "CASE", "CAST",
+        "CHAR", "CHARACTER", "CHECK", "CLOB", "COLLATE",
+        "COLUMN", "COMMENT", "COMMIT", "CONDITION", "CONNECT",
+        "CONSTRAINT", "CONTINUE", "CONVERT", "COUNT", "CREATE",
+        "CROSS", "CURRENT", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
+        "CURSOR", "DATABASE", "DATE", "DAY", "DEC",
+        "DECIMAL", "DECLARE", "DEFAULT", "DELETE", "DESC",
+        "DESCRIBE", "DISTINCT", "DO", "DOUBLE", "DROP",
+        "EACH", "ELSE", "ELSEIF", "END", "ESCAPE",
+        "EXCEPT", "EXEC", "EXECUTE", "EXISTS", "EXIT",
+        "EXPLAIN", "EXTEND", "EXTERNAL", "FALSE", "FETCH",
+        "FILTER", "FLOAT", "FOR", "FOREIGN", "FROM",
+        "FULL", "FUNCTION", "GENERATED", "GLOBAL", "GRANT",
+        "GROUP", "HAVING", "HOLD", "HOUR", "IDENTIFIED",
+        "IF", "IGNORE", "ILIKE", "IN", "INDEX",
+        "INNER", "INOUT", "INSENSITIVE", "INSERT", "INT",
+        "INTEGER", "INTERSECT", "INTERVAL", "INTO", "IS",
+        "ITERATE", "JOIN", "KEY", "LANGUAGE", "LEADING",
+        "LEAVE", "LEFT", "LIKE", "LIMIT", "LOCAL",
+        "LOCALTIME", "LOCALTIMESTAMP", "LOCK", "LOOP", "MATCH",
+        "MAX", "MERGE", "MIN", "MINUTE", "MODIFIES",
+        "MODULE", "MONTH", "NATURAL", "NCHAR", "NEW",
+        "NO", "NOT", "NULL", "NUMERIC", "OF",
+        "OFFSET", "OLD", "ON", "ONLY", "OPEN",
+        "OR", "ORDER", "OUT", "OUTER", "OVER",
+        "PARTITION", "PERCENT", "PLACING", "POSITION", "PRECISION",
+        "PRIMARY", "PROCEDURE", "RANGE", "READS", "REAL",
+        "RECURSIVE", "REFERENCES", "REGEXP", "RELEASE", "RENAME",
+        "REPEAT", "REPLACE", "RESIGNAL", "RESTRICT", "RETURN",
+        "REVOKE", "RIGHT", "RLIKE", "ROLE", "ROLLBACK",
+        "ROW", "ROWNUM", "ROWS", "SAVEPOINT", "SCHEMA",
+        "SELECT", "SENSITIVE", "SESSION", "SET", "SIGNAL",
+        "SMALLINT", "SOME", "SPECIFIC", "SQL", "SQLEXCEPTION",
+        "SQLSTATE", "SQLWARNING", "START", "STATIC", "SUBSTRING",
+        "SUM", "SYSDATE", "TABLE", "TERMINATED", "THEN",
+        "TIME", "TIMESTAMP", "TO", "TOP", "TRAILING",
+        "TRIGGER", "TRUE", "UNDO", "UNION", "UNIQUE",
+        "UNKNOWN", "UNLOCK", "UPDATE", "USAGE", "USER",
+        "USING", "VALUE", "VALUES", "VARCHAR", "VARYING",
+        "VIEW", "WHEN", "WHERE", "WHILE", "WITH",
+        "WITHIN", "YEAR", "ZONE"
+    }
 
+    if name.upper() in sqlite_keywords or ' ' in name or '-' in name:
+        return '`'+name+'`'
+    else:
+        return name 
 
 class Database:
     def __init__(self, db_path, table_name=None):
@@ -90,6 +147,7 @@ class Database:
         
         try:
             # 加载数据
+            self.table_name = format_table_column_name(self.table_name)
             query = f"SELECT * FROM {self.table_name}"
             self.data = pd.read_sql_query(query, self.conn)
             print(f"成功加载表 '{self.table_name}'，数据形状: {self.data.shape}")
@@ -473,6 +531,7 @@ class SnowflakeDatabase(Database):
         
         try:
             # 直接使用完全限定的表名
+            self.table_name = format_table_column_name(self.table_name)
             query = f'SELECT * FROM {self.table_name} ORDER BY RANDOM() LIMIT 5000'
             self.data = pd.read_sql(query, self.conn)
             print(f"成功加载表 '{self.table_name}'，数据形状: {self.data.shape}")

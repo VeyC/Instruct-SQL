@@ -243,11 +243,6 @@ def sql_generation_tool(draft_sql, task, chat_model):
     pred_sql = extract_sql_from_text(llm_response)[-1]
     rules = extract_rule_from_text(llm_response)[-1]
 
-    # # 直接在这里调用refinement
-    # style_sql, llm_response = sql_style_refinement_tool(task, pred_sql, messages, llm_response, chat_model, sqlite_dir, task.execute_history, rules)
-    # output_sql, llm_response = sql_output_refinement_tool(task, style_sql, messages, llm_response, chat_model, sqlite_dir, task.execute_history)
-
-    # return output_sql
     return pred_sql, rules
 
     
@@ -362,7 +357,11 @@ def sql_style_refinement(task: Any, execution_history: Dict[str, Any]) -> Dict[s
 
     pred_sqls = []
     for idx, (sql, rule) in enumerate(zip(sql_generation_sqls, rules)): 
-        content_input = get_style_sql_agent_prompt(task.question, sql, rule)
+        if 'dev' in sqlite_dir:
+            content_input = get_style_sql_agent_dev_prompt(task.question, sql, rule)
+        else:
+            content_input = get_style_sql_agent_test_prompt(task.question, sql, rule)
+
         messages = [{
                         "role": "system",
                         "content": "You are a data science expert.",
@@ -485,24 +484,6 @@ def sql_output_refinement(task: Any, execution_history: Dict[str, Any]) -> Dict[
 
 
 
-def post_process(p_sqls, sqlite_dir):
-    sqlite_dir = str(sqlite_dir)
-    new_p_sqls = []
-    for p_sql in p_sqls:
-        if 'thrombosis_prediction' in sqlite_dir and 'Laboratory' in p_sql and 'JOIN' in p_sql:
-            p_sql = p_sql.replace('DISTINCT', '')
-        if 'debit_card_specializing' in sqlite_dir and 'JOIN' in p_sql and 'yearmonth' in p_sql:  
-            p_sql = p_sql.replace('DISTINCT', '')   
-        if 'codebase_community' in sqlite_dir : 
-            p_sql = p_sql.replace('DISTINCT', '')  
-        if 'financial' in sqlite_dir : 
-            p_sql = p_sql.replace('DISTINCT', '') 
-        
-        p_sql = p_sql.replace('LEFT JOIN', 'INNER JOIN')
-        new_p_sqls.append(p_sql)
-    return new_p_sqls
-
-
 @node_decorator(check_schema_status=False)
 def sql_selection(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any]:
     print('question_id: ', task.question_id, 'enter sql_selection -----')
@@ -532,10 +513,9 @@ def sql_selection(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any
     db_files = [sqlite_dir] * sampling_num
     mj_pred_sqls = major_voting(db_files, candidate_sqls, sampling_num) # [[sql]]   
 
-    selection_sql = post_process(mj_pred_sqls[0], sqlite_dir)  # TODO 考虑要不要删除
     response = {
         "candidate_sqls": candidate_sqls,
-        "sqls": selection_sql 
+        "sqls": mj_pred_sqls[0] 
     }
     return response 
     

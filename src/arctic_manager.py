@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 from typing import List, Dict, Any, Optional
 from threading import Lock
 
@@ -82,6 +84,8 @@ class ArcticManager:
         self.max_input_len = max_input_len
         self.max_output_len = max_output_len
         
+        # 创建推理锁（区别于单例创建锁 _lock）
+        self.inference_lock = Lock()
         # Load tokenizer
         print(f"Loading tokenizer from {pretrained_model_name_or_path}...")
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -275,9 +279,32 @@ Output Format:
         if sampling_params is None:
             sampling_params = self.sampling_params
         
-        # Generate outputs
-        outputs = self.llm.generate(prompts, sampling_params, use_tqdm=use_tqdm)
+        # # Generate outputs
+        # outputs = self.llm.generate(prompts, sampling_params, use_tqdm=use_tqdm)
+
+
+        # 记录等待开始时间
+        thread_name = threading.current_thread().name
+        wait_start = time.time()
+        print(f"[{thread_name}] 等待推理锁... (Prompts数量: {len(prompts)})")
         
+        # 用锁保护 vLLM 推理
+        with self.inference_lock:
+            wait_time = time.time() - wait_start
+            print(f"[{thread_name}] 获取推理锁成功 (等待了 {wait_time:.2f}秒)")
+            
+            # 记录推理开始时间
+            infer_start = time.time()
+            
+            # Generate outputs
+            outputs = self.llm.generate(prompts, sampling_params, use_tqdm=use_tqdm)
+            
+            # 计算推理耗时
+            infer_time = time.time() - infer_start
+            print(f"[{thread_name}] vLLM推理完成 (耗时 {infer_time:.2f}秒)")
+        
+        print(f"[{thread_name}] 释放推理锁")
+
         # Parse results
         results = []
         for output in outputs:
@@ -314,8 +341,30 @@ Output Format:
         else:
             prompt = input_text
         
-        # Generate
-        outputs = self.llm.generate([prompt], self.sampling_params, use_tqdm=False)
+        # # Generate
+        # outputs = self.llm.generate([prompt], self.sampling_params, use_tqdm=False)
+
+        thread_name = threading.current_thread().name
+        # 记录等待开始时间
+        wait_start = time.time()
+        print(f"[{thread_name}] 等待推理锁... (单个推理)")
+        
+        # 用锁保护 vLLM 推理
+        with self.inference_lock:
+            wait_time = time.time() - wait_start
+            print(f"[{thread_name}] 获取推理锁成功 (等待了 {wait_time:.2f}秒)")
+            
+            # 记录推理开始时间
+            infer_start = time.time()
+            
+            # Generate
+            outputs = self.llm.generate([prompt], self.sampling_params, use_tqdm=False)
+            
+            # 计算推理耗时
+            infer_time = time.time() - infer_start
+            print(f"[{thread_name}] vLLM推理完成 (耗时 {infer_time:.2f}秒)")
+        
+        print(f"[{thread_name}] 释放推理锁")
         
         # Parse responses
         responses = [o.text for o in outputs[0].outputs]

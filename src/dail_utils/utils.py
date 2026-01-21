@@ -359,7 +359,6 @@ def sql_normalization(sql):
 #         else:
 #             new_sql_tokens.append(token.value.strip())
 def sql2skeleton(sql: str, db_schema):
-    print("原始SQL输入内容:", repr(sql))
     sql = sql_normalization(sql)
     table_names_original, table_dot_column_names_original, column_names_original = [], [], []
     column_names_original.append("*")
